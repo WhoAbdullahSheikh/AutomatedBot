@@ -6,19 +6,17 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 import re
 import os
-import shutil
 import subprocess
 import time
-
-
 
 class CheckStatusLibrary:
     def __init__(self):
         self.driver = None
 
     def open_browser(self, url):
-        """Open a browser and navigate to the given URL."""
+        """Open a browser and navigate to the given URL in fullscreen mode."""
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+        self.driver.maximize_window()  # Open browser in fullscreen mode
         self.driver.get(url)
 
     def check_email(self, email):
@@ -27,8 +25,18 @@ class CheckStatusLibrary:
         return re.match(email_pattern, email) is not None
 
     def check_password(self, password):
-        """Check if password is at least 8 characters long and alphanumeric."""
-        return len(password) >= 8 and password.isalnum()
+        """Check if password meets all security criteria."""
+        if len(password) < 8:
+            return False
+        if not re.search(r'[A-Z]', password):  # At least one uppercase letter
+            return False
+        if not re.search(r'[a-z]', password):  # At least one lowercase letter
+            return False
+        if not re.search(r'[0-9]', password):  # At least one digit
+            return False
+        if not re.search(r'[\W_]', password):  # At least one special character
+            return False
+        return True
 
     def check_status_and_validate(self):
         """Check the status, validate email, password, and approve or reject if conditions are met."""
@@ -110,7 +118,7 @@ class CheckStatusLibrary:
         os.makedirs(results_dir, exist_ok=True)  # Create a new results directory
 
         command = ["robot", "-d", results_dir,
-                   "Tests/google/functionaltestsuite/automated_login_for_github/Tasks.robot"]
+                   "Tests/google/functionaltestsuite/automated_authorization/Tasks.robot"]
         try:
             subprocess.run(command, check=True)
             print(f"Robot Framework tests executed. Results stored in '{results_dir}'.")
