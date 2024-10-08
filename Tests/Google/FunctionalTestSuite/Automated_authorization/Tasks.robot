@@ -25,7 +25,7 @@ Open Browser Using Library
 
 Check Status and Validate Using Library
     ${result}=    CheckStatusLibrary.check_status_and_validate
-    [RETURN]    ${result}
+    RETURN    ${result}
 
 Close Browser Using Library
     CheckStatusLibrary.Close Browser
