@@ -9,6 +9,7 @@ import os
 import subprocess
 import time
 
+
 class CheckStatusLibrary:
     def __init__(self):
         self.driver = None
@@ -41,6 +42,7 @@ class CheckStatusLibrary:
     def check_status_and_validate(self):
         """Check the status, validate email, password, and approve or reject if conditions are met."""
         results = []
+        pending_users = []
 
         while True:
             try:
@@ -51,9 +53,8 @@ class CheckStatusLibrary:
                     print("No pending users found.")
                     break
 
-                processed_any_user = False  # Flag to check if any user was processed this iteration
-
-                for i in range(1, len(rows)):
+                # Collect pending users
+                for i in range(1, len(rows)):  # Start from 1 to skip the header
                     columns = rows[i].find_elements(By.TAG_NAME, "td")
 
                     if len(columns) > 0:
@@ -63,27 +64,36 @@ class CheckStatusLibrary:
                         password_plaintext = columns[3].text
                         status = columns[6].text
 
-                        print(
-                            f"User ID: {user_id}, Username: {username}, Email: {email}, Status: {status}, Password: {password_plaintext}")
-
                         if "pending" in status.lower():
-                            processed_any_user = True
-                            if self.check_email(email) and self.check_password(password_plaintext):
-                                print(f"User {username} meets all conditions. Approving user...")
-                                self.approve_user(rows[i], username, results)
-                                self.run_robot_command()  # Run the Robot Framework command after approval
-                            else:
-                                print(f"User {username} does not meet the conditions. Rejecting user...")
-                                self.reject_user(rows[i], username, results)
-                                self.run_robot_command()  # Run the Robot Framework command after rejection
+                            pending_users.append((username, email, password_plaintext))
 
-                # Wait for a moment for updates to reflect
-                WebDriverWait(self.driver, 5).until(EC.staleness_of(rows[1]))
-
-                # If no user was processed in this iteration, break the loop
-                if not processed_any_user:
-                    print("All users have been processed.")
+                # Break the loop if no pending users were found
+                if not pending_users:
+                    print("No pending users found.")
                     break
+
+                # Now process all pending users together
+                for username, email, password in pending_users:
+                    print(f"Evaluating user: {username}")
+
+                    if self.check_email(email) and self.check_password(password):
+                        print(f"User {username} meets all conditions. Approving user...")
+                        self.approve_user_by_username(username, results)
+                    else:
+                        print(f"User {username} does not meet the conditions. Rejecting user...")
+                        self.reject_user_by_username(username, results)
+
+                    # Wait for a moment after processing each user
+                    time.sleep(0.5)
+
+                # Refresh the table to get the updated user list
+                self.driver.refresh()
+                time.sleep(1)  # Wait for the page to fully load
+
+                # Optionally, run the Robot Framework command after processing all users
+                self.run_robot_command()
+
+                break  # Exit after processing all pending users
 
             except Exception as e:
                 print(f"Error processing users: {e}")
@@ -91,41 +101,50 @@ class CheckStatusLibrary:
 
         return results
 
-    def approve_user(self, row, username, results):
-        """Approve the user."""
+    def approve_user_by_username(self, username, results):
+        """Approve the user by username."""
         try:
-            approve_button = row.find_element(By.XPATH, ".//button[@name='action' and @value='approve']")
-            approve_button.click()
-            WebDriverWait(self.driver, 10).until(EC.staleness_of(approve_button))
-            results.append(f"{username} approved.")
+            table = self.driver.find_element(By.ID, "userTable")
+            rows = table.find_elements(By.TAG_NAME, "tr")
+
+            for row in rows:
+                columns = row.find_elements(By.TAG_NAME, "td")
+                if len(columns) > 0 and columns[1].text == username:
+                    approve_button = row.find_element(By.XPATH, ".//button[@name='action' and @value='approve']")
+                    approve_button.click()
+                    WebDriverWait(self.driver, 10).until(EC.staleness_of(approve_button))
+                    results.append(f"{username} approved.")
+                    break
+
         except Exception as e:
             print(f"Error approving {username}: {e}")
 
-    def reject_user(self, row, username, results):
-        """Reject the user."""
+    def reject_user_by_username(self, username, results):
+        """Reject the user by username."""
         try:
-            reject_button = row.find_element(By.XPATH, ".//button[@name='action' and @value='reject']")
-            reject_button.click()
-            WebDriverWait(self.driver, 10).until(EC.staleness_of(reject_button))
-            results.append(f"{username} rejected.")
+            table = self.driver.find_element(By.ID, "userTable")
+            rows = table.find_elements(By.TAG_NAME, "tr")
+
+            for row in rows:
+                columns = row.find_elements(By.TAG_NAME, "td")
+                if len(columns) > 0 and columns[1].text == username:
+                    reject_button = row.find_element(By.XPATH, ".//button[@name='action' and @value='reject']")
+                    reject_button.click()
+                    WebDriverWait(self.driver, 10).until(EC.staleness_of(reject_button))
+                    results.append(f"{username} rejected.")
+                    break
+
         except Exception as e:
             print(f"Error rejecting {username}: {e}")
 
-    def run_robot_command(self):
-        """Run the Robot Framework command with a unique output directory."""
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        results_dir = f"Results_Logs/results_{timestamp}"
-        os.makedirs(results_dir, exist_ok=True)  # Create a new results directory
 
-        command = ["robot", "-d", results_dir,
-                   "Tests/google/functionaltestsuite/automated_authorization/Tasks.robot"]
-        try:
-            subprocess.run(command, check=True)
-            print(f"Robot Framework tests executed. Results stored in '{results_dir}'.")
-        except Exception as e:
-            print(f"Error running Robot Framework command: {e}")
 
-    def close_browser(self):
-        """Close the browser."""
-        if self.driver:
-            self.driver.quit()
+
+if __name__ == "__main__":
+    url = "http://localhost/portal/frontend/dashboard.php"  # Replace with your actual URL
+    check_status = CheckStatusLibrary()
+    check_status.open_browser(url)
+    results = check_status.check_status_and_validate()
+    print(results)
+    # Move the browser closing here to close after all users are processed
+    check_status.close_browser()
