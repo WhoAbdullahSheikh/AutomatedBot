@@ -1,0 +1,2 @@
+
+robot -d results Tests/Google/FunctionalTestSuite/automated_authorization/tasks.robot

@@ -25,19 +25,20 @@ class CheckStatusLibrary:
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         return re.match(email_pattern, email) is not None
 
-    def check_password(self, password):
-        """Check if password meets all security criteria."""
-        if len(password) < 8:
-            return False
-        if not re.search(r'[A-Z]', password):  # At least one uppercase letter
-            return False
-        if not re.search(r'[a-z]', password):  # At least one lowercase letter
-            return False
-        if not re.search(r'[0-9]', password):  # At least one digit
-            return False
-        if not re.search(r'[\W_]', password):  # At least one special character
-            return False
-        return True
+    @staticmethod
+    def check_password(password):
+        special_characters = r'[!@#$%^&*(),.?":{}|<>]'
+        print(f"Checking password: {password}")
+        result = (len(password) >= 8 and
+                  any(c.isupper() for c in password) and
+                  any(c.islower() for c in password) and
+                  any(c.isdigit() for c in password) and
+                  re.search(special_characters, password))
+
+        if not result:
+            print(f"Password check failed for: {password}")
+
+        return result
 
     def check_status_and_validate(self):
         """Check the status, validate email, password, and approve or reject if conditions are met."""
@@ -49,51 +50,50 @@ class CheckStatusLibrary:
                 table = self.driver.find_element(By.ID, "userTable")
                 rows = table.find_elements(By.TAG_NAME, "tr")
 
-                if len(rows) <= 1:  # No more users to process
+                if len(rows) <= 1:
                     print("No pending users found.")
                     break
 
-                # Collect pending users
-                for i in range(1, len(rows)):  # Start from 1 to skip the header
+                for i in range(1, len(rows)):
                     columns = rows[i].find_elements(By.TAG_NAME, "td")
 
                     if len(columns) > 0:
                         user_id = columns[0].text
                         username = columns[1].text
-                        email = columns[2].text
-                        password_plaintext = columns[3].text
+                        email = columns[2].text.strip()
+                        password_plaintext = columns[3].text.strip()
                         status = columns[6].text
 
                         if "pending" in status.lower():
                             pending_users.append((username, email, password_plaintext))
 
-                # Break the loop if no pending users were found
                 if not pending_users:
                     print("No pending users found.")
                     break
 
-                # Now process all pending users together
                 for username, email, password in pending_users:
                     print(f"Evaluating user: {username}")
 
-                    if self.check_email(email) and self.check_password(password):
+                    email_valid = self.check_email(email)
+                    password_valid = self.check_password(password)
+
+                    if email_valid and password_valid:
                         print(f"User {username} meets all conditions. Approving user...")
                         self.approve_user_by_username(username, results)
                     else:
                         print(f"User {username} does not meet the conditions. Rejecting user...")
+                        if not email_valid:
+                            print(f"Invalid email: {email}")
+                        if not password_valid:
+                            print(f"Invalid password: {password}")
                         self.reject_user_by_username(username, results)
 
-                    # Wait for a moment after processing each user
-                    time.sleep(0.5)
+                    time.sleep(0)
 
-                # Refresh the table to get the updated user list
                 self.driver.refresh()
-                time.sleep(1)  # Wait for the page to fully load
+                time.sleep(0.5)
 
-                # Optionally, run the Robot Framework command after processing all users
-                self.run_robot_command()
-
-                break  # Exit after processing all pending users
+                break
 
             except Exception as e:
                 print(f"Error processing users: {e}")
@@ -136,15 +136,3 @@ class CheckStatusLibrary:
 
         except Exception as e:
             print(f"Error rejecting {username}: {e}")
-
-
-
-
-if __name__ == "__main__":
-    url = "http://localhost/portal/frontend/dashboard.php"  # Replace with your actual URL
-    check_status = CheckStatusLibrary()
-    check_status.open_browser(url)
-    results = check_status.check_status_and_validate()
-    print(results)
-    # Move the browser closing here to close after all users are processed
-    check_status.close_browser()
